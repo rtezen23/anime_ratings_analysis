@@ -13,13 +13,25 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS para permitir requests desde React
+# Configuración CORS para producción
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://tu-frontend.netlify.app",  # Cambia por tu URL de frontend
+    "https://tu-frontend.render.com",   # O tu URL de Render
+]
+
+# En producción, puedes ser más específico con los origins
+if os.getenv("ENVIRONMENT") == "production":
+    origins = [
+        "https://tu-frontend.netlify.app",  # Tu URL real de frontend
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    # allow_origins=["*"],  # En producción, especifica tus dominios
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -197,13 +209,5 @@ async def internal_error_handler(request, exc):
     return {"error": "Error interno del servidor", "status_code": 500}
 
 if __name__ == "__main__":
-    print("🚀 Iniciando Anime Recommendation API...")
-    print("📡 Server: http://localhost:8000")
-    print("📚 Docs: http://localhost:8000/docs")
-    
-    uvicorn.run(
-        "main:app",  # Cambia "main" por el nombre de tu archivo
-        host="0.0.0.0",
-        port=8000,
-        reload=True  # Solo para desarrollo
-    )
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

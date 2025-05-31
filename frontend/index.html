@@ -354,8 +354,18 @@
 
     <script>
         class AnimeRecommender {
+            // constructor() {
+            //     this.apiBaseUrl = 'http://localhost:8000'; // Cambia por tu URL de API
+            //     this.animeList = [];
+            //     this.debounceTimer = null;
+            //     this.init();
+            // }
+
             constructor() {
-                this.apiBaseUrl = 'http://localhost:8000'; // Cambia por tu URL de API
+                // Detectar si estamos en producción o desarrollo
+                this.apiBaseUrl = window.location.hostname === 'localhost' 
+                    ? 'http://localhost:8000' 
+                    : 'https://tu-backend.render.com'; // Cambia por tu URL de Render
                 this.animeList = [];
                 this.debounceTimer = null;
                 this.init();
