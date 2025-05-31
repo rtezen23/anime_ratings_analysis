@@ -3,8 +3,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import uvicorn
-from anime_recommender import AnimeRecommender
 import os
+import gc
+import psutil
+
+# Importar solo cuando sea necesario para ahorrar memoria
+try:
+    from anime_recommender import AnimeRecommender
+except ImportError:
+    print("❌ Error importando AnimeRecommender")
+    AnimeRecommender = None
 
 # Inicializar FastAPI
 app = FastAPI(
@@ -13,30 +21,31 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configuración CORS para producción
+# Configuración CORS mejorada
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    # "https://tu-frontend.netlify.app",
-    "https://anime-ratings-analysis.onrender.com/",
+    "https://anime-ratings-analysis.onrender.com",
 ]
 
-# En producción, puedes ser más específico con los origins
+# En producción, usar solo origins específicos
 if os.getenv("ENVIRONMENT") == "production":
     origins = [
-        "https://anime-ratings-analysis.onrender.com/",
+        "https://anime-ratings-analysis.onrender.com",
+        "https://tu-frontend-domain.com",  # Cambiar por tu dominio real
     ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"] if os.getenv("ENVIRONMENT") != "production" else origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "HEAD"],
     allow_headers=["*"],
 )
 
 # Global recommender instance
 recommender = None
+model_loading_error = None
 
 # Pydantic models
 class RecommendationRequest(BaseModel):
@@ -62,49 +71,113 @@ class AnimeListResponse(BaseModel):
     animes: List[str]
     total_count: int
 
-# Configuración del modelo
+# Configuración del modelo con variable de entorno
 MODEL_CONFIG = {
-    "google_drive_file_id": "TU_FILE_ID_AQUI",  # ⚠️ CAMBIAR POR TU FILE ID REAL
+    "google_drive_file_id": os.getenv("MODEL_FILE_ID", "TU_FILE_ID_AQUI"),
     "model_path": "anime_model.pkl"
 }
 
-# Startup event
+def get_memory_usage():
+    """Obtiene el uso actual de memoria"""
+    try:
+        process = psutil.Process(os.getpid())
+        memory_info = process.memory_info()
+        return {
+            "rss_mb": memory_info.rss / 1024 / 1024,  # Memoria física
+            "vms_mb": memory_info.vms / 1024 / 1024,  # Memoria virtual
+        }
+    except:
+        return {"rss_mb": 0, "vms_mb": 0}
+
+# Startup event optimizado
 @app.on_event("startup")
 async def startup_event():
-    global recommender
-    recommender = AnimeRecommender()
+    global recommender, model_loading_error
     
-    # Configuración del file ID desde variables de entorno o config
-    file_id = os.getenv("MODEL_FILE_ID", MODEL_CONFIG["google_drive_file_id"])
-    model_path = MODEL_CONFIG["model_path"]
+    print("🚀 Iniciando servidor...")
+    print(f"💾 Memoria inicial: {get_memory_usage()}")
     
-    if file_id == "TU_FILE_ID_AQUI":
-        print("⚠️  ADVERTENCIA: FILE_ID no configurado!")
-        print("💡 Configura MODEL_FILE_ID como variable de entorno o cambia MODEL_CONFIG")
+    # Verificar disponibilidad de la clase
+    if AnimeRecommender is None:
+        model_loading_error = "AnimeRecommender no disponible"
+        print(f"❌ {model_loading_error}")
         return
     
-    # Intentar descargar modelo si no existe
-    if not os.path.exists(model_path):
-        print("🔄 Modelo no encontrado localmente, descargando...")
-        success = recommender.download_model(file_id, model_path)
-        if not success:
-            print("❌ Error descargando modelo desde Google Drive")
+    try:
+        recommender = AnimeRecommender()
+        
+        # Verificar configuración del FILE_ID
+        file_id = MODEL_CONFIG["google_drive_file_id"]
+        model_path = MODEL_CONFIG["model_path"]
+        
+        if file_id == "TU_FILE_ID_AQUI" or not file_id:
+            model_loading_error = "FILE_ID no configurado correctamente"
+            print("⚠️  ADVERTENCIA: MODEL_FILE_ID no configurado!")
+            print("💡 Configura MODEL_FILE_ID como variable de entorno en Render")
+            print("🔗 Ejemplo: MODEL_FILE_ID=1abc123def456ghi789...")
             return
+        
+        print(f"📁 Usando FILE_ID: {file_id[:20]}...")
+        
+        # Verificar memoria antes de descargar
+        memory_before = get_memory_usage()
+        print(f"💾 Memoria antes de descarga: {memory_before['rss_mb']:.1f}MB")
+        
+        # Intentar descargar modelo si no existe
+        if not os.path.exists(model_path):
+            print("🔄 Descargando modelo desde Google Drive...")
+            success = recommender.download_model(file_id, model_path)
+            if not success:
+                model_loading_error = "Error descargando modelo desde Google Drive"
+                print(f"❌ {model_loading_error}")
+                return
+        else:
+            print("📂 Modelo ya existe localmente")
+        
+        # Verificar tamaño del archivo
+        try:
+            file_size_mb = os.path.getsize(model_path) / 1024 / 1024
+            print(f"📊 Tamaño del modelo: {file_size_mb:.1f}MB")
+            
+            # Advertir si el archivo es muy grande para el plan gratuito
+            if file_size_mb > 300:  # Conservador para 512MB RAM
+                print("⚠️  ADVERTENCIA: Modelo muy grande para plan gratuito")
+                print("💡 Considera optimizar el modelo o upgradar a plan pagado")
+        except:
+            pass
+        
+        # Cargar modelo con manejo de memoria
+        print("📚 Cargando modelo en memoria...")
+        memory_before_load = get_memory_usage()
+        
+        success = recommender.load_model(model_path)
+        
+        if success:
+            memory_after = get_memory_usage()
+            print("✅ Modelo cargado exitosamente")
+            print(f"📊 Animes disponibles: {len(recommender.get_anime_list())}")
+            print(f"💾 Memoria después de carga: {memory_after['rss_mb']:.1f}MB")
+            print(f"📈 Memoria usada por modelo: {memory_after['rss_mb'] - memory_before_load['rss_mb']:.1f}MB")
+            
+            # Limpiar memoria no usada
+            gc.collect()
+            
+        else:
+            model_loading_error = "Error cargando modelo en memoria"
+            print(f"❌ {model_loading_error}")
+            
+            # Limpiar archivo corrupto
+            if os.path.exists(model_path):
+                try:
+                    os.remove(model_path)
+                    print("🧹 Archivo corrupto eliminado")
+                except Exception as cleanup_error:
+                    print(f"⚠️  No se pudo eliminar archivo: {cleanup_error}")
     
-    # Cargar modelo
-    success = recommender.load_model(model_path)
-    if success:
-        print("✅ Modelo cargado exitosamente")
-        print(f"📊 Animes disponibles: {len(recommender.get_anime_list())}")
-    else:
-        print("❌ Error cargando modelo")
-        # Intentar eliminar archivo corrupto para próximo intento
-        if os.path.exists(model_path):
-            try:
-                os.remove(model_path)
-                print("🧹 Archivo corrupto eliminado")
-            except:
-                pass
+    except Exception as e:
+        model_loading_error = f"Error en startup: {str(e)}"
+        print(f"❌ {model_loading_error}")
+        recommender = None
 
 # Routes
 @app.get("/")
@@ -113,26 +186,37 @@ async def root():
         "message": "Anime Recommendation API",
         "status": "active",
         "version": "1.0.0",
-        "endpoints": ["/animes", "/recommend"]
+        "endpoints": ["/animes", "/recommend", "/health"],
+        "memory_usage": get_memory_usage()
     }
+
+@app.head("/")
+async def root_head():
+    """Handle HEAD requests for health checks"""
+    return {}
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint mejorado"""
     model_loaded = recommender is not None and recommender.sig_matrix is not None
+    
     return {
         "status": "healthy" if model_loaded else "model_not_loaded",
         "model_loaded": model_loaded,
-        "total_animes": len(recommender.get_anime_list()) if model_loaded else 0
+        "loading_error": model_loading_error,
+        "total_animes": len(recommender.get_anime_list()) if model_loaded else 0,
+        "memory_usage": get_memory_usage(),
+        "environment": os.getenv("ENVIRONMENT", "development")
     }
 
 @app.get("/animes", response_model=AnimeListResponse)
 async def get_anime_list():
     """Obtiene lista completa de animes disponibles"""
     if recommender is None or recommender.sig_matrix is None:
+        error_msg = model_loading_error or "Modelo no disponible"
         raise HTTPException(
             status_code=503, 
-            detail="Modelo no disponible. El servidor se está inicializando."
+            detail=f"Servicio no disponible: {error_msg}"
         )
     
     try:
@@ -150,16 +234,17 @@ async def get_anime_list():
 async def get_recommendations(request: RecommendationRequest):
     """Genera recomendaciones para un anime específico"""
     if recommender is None or recommender.sig_matrix is None:
+        error_msg = model_loading_error or "Modelo no disponible"
         raise HTTPException(
             status_code=503, 
-            detail="Modelo no disponible. El servidor se está inicializando."
+            detail=f"Servicio no disponible: {error_msg}"
         )
     
     # Validar número de recomendaciones
-    if request.num_recommendations < 1 or request.num_recommendations > 50:
+    if request.num_recommendations < 1 or request.num_recommendations > 20:  # Reducido para ahorrar memoria
         raise HTTPException(
             status_code=400, 
-            detail="num_recommendations debe estar entre 1 y 50"
+            detail="num_recommendations debe estar entre 1 y 20"
         )
     
     try:
@@ -192,9 +277,10 @@ async def get_recommendations(request: RecommendationRequest):
 async def get_anime_info(anime_name: str):
     """Obtiene información específica de un anime"""
     if recommender is None or recommender.anime_data is None:
+        error_msg = model_loading_error or "Modelo no disponible"
         raise HTTPException(
             status_code=503, 
-            detail="Modelo no disponible."
+            detail=f"Servicio no disponible: {error_msg}"
         )
     
     try:
