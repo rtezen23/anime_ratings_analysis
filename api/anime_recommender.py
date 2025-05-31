@@ -17,15 +17,10 @@ class AnimeRecommender:
     def download_model(self, file_id, model_path="anime_model.pkl", max_retries=3):
         """
         Descarga el modelo desde Google Drive con manejo mejorado
-        
-        Args:
-            file_id: ID del archivo en Google Drive
-            model_path: Ruta donde guardar el modelo
-            max_retries: Número máximo de intentos
         """
         if os.path.exists(model_path):
             file_size = os.path.getsize(model_path)
-            if file_size > 1000:  # Archivo válido (> 1KB)
+            if file_size > 10000:  # Archivo válido (> 10KB)
                 print(f"📂 Modelo ya existe localmente: {model_path} ({file_size/1024/1024:.1f}MB)")
                 return True
             else:
@@ -38,118 +33,160 @@ class AnimeRecommender:
             try:
                 print(f"📥 Intento {attempt + 1}/{max_retries}")
                 
-                # URLs para probar (Google Drive tiene diferentes formatos)
-                urls_to_try = [
-                    f"https://drive.google.com/uc?export=download&id={file_id}",
-                    f"https://drive.google.com/uc?export=download&id={file_id}&confirm=t",
-                    f"https://docs.google.com/uc?export=download&id={file_id}",
-                ]
+                # URL correcta para descarga directa de Google Drive
+                url = f"https://drive.google.com/uc?export=download&id={file_id}&confirm=t"
                 
-                success = False
-                for i, url in enumerate(urls_to_try):
-                    try:
-                        print(f"🌐 Probando URL {i+1}: {url[:50]}...")
-                        
-                        # Headers para simular un navegador
-                        headers = {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                            'Accept-Language': 'en-US,en;q=0.5',
-                            'Accept-Encoding': 'gzip, deflate',
-                            'Connection': 'keep-alive',
-                        }
-                        
-                        # Primera petición para obtener cookies/tokens si es necesario
-                        session = requests.Session()
-                        response = session.get(url, headers=headers, stream=True, timeout=30)
-                        
-                        # Verificar si necesitamos confirmar descarga (archivos grandes)
-                        if 'download_warning' in response.text or 'virus scan warning' in response.text:
-                            print("⚠️ Detectada advertencia de Google Drive, intentando bypass...")
-                            # Buscar token de confirmación
-                            for line in response.text.split('\n'):
-                                if 'confirm=' in line and 'download' in line:
-                                    import re
-                                    confirm_token = re.search(r'confirm=([a-zA-Z0-9\-_]+)', line)
-                                    if confirm_token:
-                                        confirm_url = f"https://drive.google.com/uc?export=download&id={file_id}&confirm={confirm_token.group(1)}"
-                                        response = session.get(confirm_url, headers=headers, stream=True, timeout=60)
-                                        break
-                        
-                        response.raise_for_status()
-                        
-                        # Verificar que la respuesta tenga contenido
-                        content_length = response.headers.get('content-length')
-                        if content_length:
-                            size_mb = int(content_length) / 1024 / 1024
-                            print(f"📊 Tamaño esperado: {size_mb:.1f}MB")
-                        
-                        # Descargar archivo
-                        downloaded = 0
-                        chunk_size = 32768  # 32KB chunks
-                        
-                        with open(model_path, "wb") as f:
-                            for chunk in response.iter_content(chunk_size=chunk_size):
-                                if chunk:
-                                    f.write(chunk)
-                                    downloaded += len(chunk)
-                                    
-                                    # Mostrar progreso cada 10MB
-                                    if downloaded % (10 * 1024 * 1024) == 0:
-                                        progress_mb = downloaded / 1024 / 1024
-                                        print(f"📥 Descargando... {progress_mb:.1f}MB")
-                        
-                        # Verificar que el archivo se descargó correctamente
-                        file_size = os.path.getsize(model_path)
-                        if file_size < 1000:  # Menos de 1KB indica error
-                            print(f"⚠️ Archivo muy pequeño ({file_size} bytes), probablemente corrupto")
-                            if os.path.exists(model_path):
-                                os.remove(model_path)
-                            continue
-                        
-                        print(f"✅ Modelo descargado exitosamente: {model_path} ({file_size/1024/1024:.1f}MB)")
-                        success = True
-                        break
-                        
-                    except requests.exceptions.RequestException as e:
-                        print(f"❌ Error con URL {i+1}: {e}")
-                        continue
-                    except Exception as e:
-                        print(f"❌ Error inesperado con URL {i+1}: {e}")
-                        continue
+                print(f"🌐 URL de descarga: {url[:60]}...")
                 
-                if success:
-                    return True
+                # Session con headers mejorados
+                session = requests.Session()
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'application/octet-stream,*/*',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                }
+                
+                # Primera petición
+                print("🔍 Obteniendo información del archivo...")
+                response = session.get(url, headers=headers, stream=True, timeout=60)
+                response.raise_for_status()
+                
+                # Verificar si es una página HTML (error común)
+                content_type = response.headers.get('content-type', '')
+                if 'text/html' in content_type.lower():
+                    print("⚠️ Recibida página HTML en lugar del archivo")
+                    print("💡 Esto indica que el enlace no está configurado correctamente")
                     
-                # Si falló, esperar antes del siguiente intento
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 2
-                    print(f"⏳ Esperando {wait_time}s antes del siguiente intento...")
-                    time.sleep(wait_time)
+                    # Intentar obtener el enlace de descarga real del HTML
+                    html_content = response.text
+                    if 'download' in html_content and 'confirm=' in html_content:
+                        print("🔄 Buscando enlace de confirmación...")
+                        import re
+                        # Buscar patrones de descarga
+                        patterns = [
+                            r'href="(/uc\?export=download[^"]*)"',
+                            r'"downloadUrl":"([^"]*)"',
+                            r'confirm=([a-zA-Z0-9\-_]+)',
+                        ]
+                        
+                        for pattern in patterns:
+                            matches = re.findall(pattern, html_content)
+                            if matches:
+                                print(f"✅ Encontrado patrón: {pattern}")
+                                if pattern.startswith('confirm='):
+                                    confirm_token = matches[0]
+                                    new_url = f"https://drive.google.com/uc?export=download&id={file_id}&confirm={confirm_token}"
+                                    print(f"🔄 Reintentando con token: {new_url[:60]}...")
+                                    response = session.get(new_url, headers=headers, stream=True, timeout=60)
+                                    response.raise_for_status()
+                                    break
+                                else:
+                                    new_url = "https://drive.google.com" + matches[0]
+                                    response = session.get(new_url, headers=headers, stream=True, timeout=60)
+                                    response.raise_for_status()
+                                    break
+                    
+                    # Si aún es HTML, el enlace está mal configurado
+                    if 'text/html' in response.headers.get('content-type', '').lower():
+                        print("❌ El archivo sigue devolviendo HTML")
+                        print("💡 Verifica que:")
+                        print("   1. El archivo sea público (Cualquiera con el enlace)")
+                        print("   2. El FILE_ID sea correcto")
+                        print("   3. El archivo no esté en la papelera")
+                        continue
                 
-            except Exception as e:
-                print(f"❌ Error en intento {attempt + 1}: {e}")
-                if os.path.exists(model_path):
-                    try:
+                # Verificar tamaño esperado
+                content_length = response.headers.get('content-length')
+                if content_length:
+                    size_mb = int(content_length) / 1024 / 1024
+                    print(f"📊 Tamaño esperado: {size_mb:.1f}MB")
+                    
+                    # Verificar que no sea demasiado pequeño
+                    if int(content_length) < 10000:  # Menos de 10KB
+                        print("⚠️ Archivo muy pequeño, posiblemente corrupto")
+                        continue
+                else:
+                    print("⚠️ No se pudo determinar el tamaño del archivo")
+                
+                # Descargar archivo
+                print("📥 Descargando archivo...")
+                downloaded = 0
+                chunk_size = 32768  # 32KB chunks
+                
+                with open(model_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=chunk_size):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            
+                            # Mostrar progreso cada 5MB
+                            if downloaded % (5 * 1024 * 1024) == 0:
+                                progress_mb = downloaded / 1024 / 1024
+                                print(f"📥 Progreso: {progress_mb:.1f}MB")
+                
+                # Verificar archivo descargado
+                file_size = os.path.getsize(model_path)
+                if file_size < 10000:  # Menos de 10KB
+                    print(f"❌ Archivo muy pequeño ({file_size} bytes)")
+                    if os.path.exists(model_path):
                         os.remove(model_path)
-                    except:
-                        pass
+                    continue
                 
-                if attempt < max_retries - 1:
-                    time.sleep(2)
+                # Verificar que sea un archivo pickle válido
+                try:
+                    with open(model_path, 'rb') as f:
+                        # Leer los primeros bytes para verificar formato pickle
+                        header = f.read(20)
+                        if not header.startswith(b'\x80'):  # Pickle protocol marker
+                            print("❌ El archivo no parece ser un pickle válido")
+                            os.remove(model_path)
+                            continue
+                except Exception as e:
+                    print(f"❌ Error verificando archivo: {e}")
+                    if os.path.exists(model_path):
+                        os.remove(model_path)
+                    continue
+                
+                print(f"✅ Modelo descargado exitosamente: {file_size/1024/1024:.1f}MB")
+                return True
+                        
+            except requests.exceptions.RequestException as e:
+                print(f"❌ Error de red en intento {attempt + 1}: {e}")
+            except Exception as e:
+                print(f"❌ Error inesperado en intento {attempt + 1}: {e}")
+            
+            # Limpiar archivo corrupto
+            if os.path.exists(model_path):
+                try:
+                    os.remove(model_path)
+                except:
+                    pass
+            
+            # Esperar antes del siguiente intento
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 3
+                print(f"⏳ Esperando {wait_time}s antes del siguiente intento...")
+                time.sleep(wait_time)
         
         print("❌ Error: No se pudo descargar el modelo después de todos los intentos")
-        print("💡 Posibles soluciones:")
-        print("   1. Verificar que el FILE_ID sea correcto")
-        print("   2. Asegurarse que el archivo sea público en Google Drive")
-        print("   3. Verificar la conectividad de red")
+        print("\n💡 SOLUCIONES POSIBLES:")
+        print("1. Verificar que el archivo sea público en Google Drive:")
+        print("   - Clic derecho en el archivo > Compartir")
+        print("   - Cambiar a 'Cualquiera con el enlace puede ver'")
+        print("   - Copiar el ID del enlace (la parte después de /d/ y antes de /view)")
+        print("\n2. Usar un servicio alternativo:")
+        print("   - Subir el modelo a GitHub LFS")
+        print("   - Usar Dropbox o OneDrive")
+        print("   - Usar un bucket de AWS S3")
+        print("\n3. Reducir el tamaño del modelo si es muy grande")
+        
         return False
         
     def fit(self, data):
-        """
-        Entrena el modelo con los datos de anime
-        data: DataFrame con columnas ['name', 'genre', 'rating']
-        """
+        """Entrena el modelo con los datos de anime"""
         print("🔄 Entrenando modelo de recomendación...")
         
         # 1. Limpiar datos
@@ -173,7 +210,7 @@ class AnimeRecommender:
         
         tfv_matrix = self.tfv.fit_transform(genres)
         
-        # 4. Calcular similitud (UNA SOLA VEZ)
+        # 4. Calcular similitud
         print("🧮 Calculando matriz de similitud...")
         self.sig_matrix = sigmoid_kernel(tfv_matrix, tfv_matrix)
         
@@ -193,18 +230,8 @@ class AnimeRecommender:
         return sorted(self.anime_data["name"].tolist())
     
     def recommend(self, title, n_recommendations=10):
-        """
-        Genera recomendaciones para un anime
-        
-        Args:
-            title: Nombre del anime
-            n_recommendations: Número de recomendaciones (default: 10)
-            
-        Returns:
-            dict: {"success": bool, "data": list, "message": str}
-        """
+        """Genera recomendaciones para un anime"""
         try:
-            # Validar que el modelo esté entrenado
             if self.sig_matrix is None:
                 return {
                     "success": False, 
@@ -212,7 +239,6 @@ class AnimeRecommender:
                     "message": "Modelo no entrenado. Ejecuta fit() primero."
                 }
             
-            # Validar que el anime existe
             if title not in self.rec_indices:
                 available_animes = [name for name in self.rec_indices.index if title.lower() in name.lower()]
                 suggestion = f" ¿Quisiste decir: {available_animes[:3]}?" if available_animes else ""
@@ -222,18 +248,12 @@ class AnimeRecommender:
                     "message": f"Anime '{title}' no encontrado.{suggestion}"
                 }
             
-            # Obtener índice del anime
             idx = self.rec_indices[title]
-            
-            # Calcular similitudes
             sig_scores = list(enumerate(self.sig_matrix[idx]))
             sig_scores = sorted(sig_scores, key=lambda x: x[1], reverse=True)
-            
-            # Obtener top N (excluyendo el mismo anime)
             sig_scores = sig_scores[1:n_recommendations+1]
             anime_indices = [i[0] for i in sig_scores]
             
-            # Crear lista de recomendaciones
             recommendations = []
             for i, anime_idx in enumerate(anime_indices):
                 rec = {
@@ -281,9 +301,8 @@ class AnimeRecommender:
             print(f"❌ Archivo no encontrado: {filepath}")
             return False
         
-        # Verificar tamaño del archivo
         file_size = os.path.getsize(filepath)
-        if file_size < 1000:  # Menos de 1KB
+        if file_size < 10000:  # Menos de 10KB
             print(f"❌ Archivo muy pequeño ({file_size} bytes), probablemente corrupto")
             try:
                 os.remove(filepath)
@@ -294,9 +313,17 @@ class AnimeRecommender:
         
         try:
             print(f"📚 Cargando modelo de {file_size/1024/1024:.1f}MB...")
+            
+            # Verificar que sea un archivo pickle válido antes de cargarlo
+            with open(filepath, 'rb') as f:
+                header = f.read(20)
+                if not header.startswith(b'\x80'):
+                    print("❌ El archivo no es un pickle válido")
+                    os.remove(filepath)
+                    return False
+            
             model_data = joblib.load(filepath)
             
-            # Verificar que los datos estén completos
             required_keys = ['sig_matrix', 'rec_indices', 'anime_data', 'tfv']
             for key in required_keys:
                 if key not in model_data:
@@ -316,7 +343,6 @@ class AnimeRecommender:
             print(f"❌ Error cargando modelo: {e}")
             print(f"💡 Tipo de error: {type(e).__name__}")
             
-            # Limpiar archivo corrupto
             try:
                 os.remove(filepath)
                 print("🗑️ Archivo corrupto eliminado")
@@ -324,15 +350,20 @@ class AnimeRecommender:
                 pass
             return False
 
-# Test de descarga (solo para debug)
 def test_download(file_id):
     """Función de prueba para verificar descarga"""
+    print(f"🧪 Probando descarga con FILE_ID: {file_id[:20]}...")
     recommender = AnimeRecommender()
     success = recommender.download_model(file_id, "test_model.pkl")
     
     if success and os.path.exists("test_model.pkl"):
         file_size = os.path.getsize("test_model.pkl")
         print(f"✅ Test exitoso: {file_size/1024/1024:.1f}MB descargados")
+        
+        # Probar cargar el modelo
+        load_success = recommender.load_model("test_model.pkl")
+        print(f"📚 Carga de modelo: {'✅ Exitosa' if load_success else '❌ Fallida'}")
+        
         # Limpiar archivo de prueba
         os.remove("test_model.pkl")
     else:
@@ -340,7 +371,6 @@ def test_download(file_id):
     
     return success
 
-# Ejemplo de uso
 if __name__ == "__main__":
     # Para probar descarga:
     # test_download("tu_file_id_aqui")
