@@ -62,24 +62,42 @@ class AnimeListResponse(BaseModel):
     animes: List[str]
     total_count: int
 
+# Configuración del modelo
+MODEL_CONFIG = {
+    "google_drive_file_id": "TU_FILE_ID_AQUI",
+    "model_path": "anime_model.pkl"
+}
+
 # Startup event
 @app.on_event("startup")
 async def startup_event():
     global recommender
     recommender = AnimeRecommender()
     
-    # Intentar cargar modelo pre-entrenado
-    model_path = "anime_model.pkl"
-    if os.path.exists(model_path):
-        success = recommender.load_model(model_path)
-        if success:
-            print("✅ Modelo pre-entrenado cargado exitosamente")
-        else:
-            print("❌ Error cargando modelo pre-entrenado")
-            # Aquí podrías entrenar desde cero si es necesario
+    # Configuración del file ID desde variables de entorno o config
+    file_id = os.getenv("MODEL_FILE_ID", MODEL_CONFIG["google_drive_file_id"])
+    model_path = MODEL_CONFIG["model_path"]
+    
+    if file_id == "TU_FILE_ID_AQUI":
+        print("⚠️  ADVERTENCIA: FILE_ID no configurado!")
+        print("💡 Configura MODEL_FILE_ID como variable de entorno o cambia MODEL_CONFIG")
+        return
+    
+    # Intentar descargar modelo si no existe
+    if not os.path.exists(model_path):
+        print("🔄 Modelo no encontrado localmente, descargando...")
+        success = recommender.download_model(file_id, model_path)
+        if not success:
+            print("❌ Error descargando modelo desde Google Drive")
+            return
+    
+    # Cargar modelo
+    success = recommender.load_model(model_path)
+    if success:
+        print("✅ Modelo cargado exitosamente")
+        print(f"📊 Animes disponibles: {len(recommender.get_anime_list())}")
     else:
-        print("⚠️  No se encontró modelo pre-entrenado")
-        print("💡 Asegúrate de tener 'anime_model.pkl' en el directorio")
+        print("❌ Error cargando modelo")
 
 # Routes
 @app.get("/")
@@ -97,7 +115,8 @@ async def health_check():
     model_loaded = recommender is not None and recommender.sig_matrix is not None
     return {
         "status": "healthy" if model_loaded else "model_not_loaded",
-        "model_loaded": model_loaded
+        "model_loaded": model_loaded,
+        "total_animes": len(recommender.get_anime_list()) if model_loaded else 0
     }
 
 @app.get("/animes", response_model=AnimeListResponse)

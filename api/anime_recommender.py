@@ -4,6 +4,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import sigmoid_kernel
 import joblib
 import os
+import requests
 
 class AnimeRecommender:
     def __init__(self):
@@ -11,6 +12,52 @@ class AnimeRecommender:
         self.rec_indices = None
         self.anime_data = None
         self.tfv = None
+        
+    def download_model(self, file_id, model_path="anime_model.pkl"):
+        """
+        Descarga el modelo desde Google Drive
+        
+        Args:
+            file_id: ID del archivo en Google Drive
+            model_path: Ruta donde guardar el modelo
+        """
+        if os.path.exists(model_path):
+            print(f"📂 Modelo ya existe localmente: {model_path}")
+            return True
+        
+        print("🔄 Descargando modelo desde Google Drive...")
+        
+        try:
+            # URL de descarga directa de Google Drive
+            url = f"https://drive.google.com/uc?export=download&id={file_id}"
+            
+            # Hacer la petición
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
+            
+            # Guardar archivo
+            total_size = int(response.headers.get('content-length', 0))
+            downloaded = 0
+            
+            with open(model_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        
+                        # Mostrar progreso cada 50MB
+                        if downloaded % (50 * 1024 * 1024) == 0:
+                            progress = (downloaded / total_size) * 100 if total_size > 0 else 0
+                            print(f"📥 Descargando... {progress:.1f}%")
+            
+            print(f"✅ Modelo descargado exitosamente: {model_path}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error descargando modelo: {e}")
+            if os.path.exists(model_path):
+                os.remove(model_path)  # Limpiar archivo parcial
+            return False
         
     def fit(self, data):
         """
@@ -142,7 +189,7 @@ class AnimeRecommender:
         print(f"💾 Modelo guardado en: {filepath}")
         return True
     
-    def load_model(self, filepath="anime_recommender_model.pkl"):
+    def load_model(self, filepath="anime_model.pkl"):
         """Carga un modelo pre-entrenado"""
         if not os.path.exists(filepath):
             print(f"❌ Archivo no encontrado: {filepath}")
