@@ -76,3 +76,16 @@ coverage/
 # Temporary folders
 tmp/
 temp/
+
+# model
+api/anime_model.pkl
+
+# Modelos de ML
+*.pkl
+*.joblib
+*.model
+
+# Otros archivos grandes
+*.h5
+*.pth
+*.onnx
