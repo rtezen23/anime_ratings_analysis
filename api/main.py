@@ -17,14 +17,14 @@ app = FastAPI(
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://tu-frontend.netlify.app",  # Cambia por tu URL de frontend
-    "https://tu-frontend.render.com",   # O tu URL de Render
+    # "https://tu-frontend.netlify.app",
+    "https://anime-ratings-analysis.onrender.com/",
 ]
 
 # En producción, puedes ser más específico con los origins
 if os.getenv("ENVIRONMENT") == "production":
     origins = [
-        "https://tu-frontend.netlify.app",  # Tu URL real de frontend
+        "https://anime-ratings-analysis.onrender.com/",
     ]
 
 app.add_middleware(
@@ -64,7 +64,7 @@ class AnimeListResponse(BaseModel):
 
 # Configuración del modelo
 MODEL_CONFIG = {
-    "google_drive_file_id": "TU_FILE_ID_AQUI",
+    "google_drive_file_id": "TU_FILE_ID_AQUI",  # ⚠️ CAMBIAR POR TU FILE ID REAL
     "model_path": "anime_model.pkl"
 }
 
@@ -98,6 +98,13 @@ async def startup_event():
         print(f"📊 Animes disponibles: {len(recommender.get_anime_list())}")
     else:
         print("❌ Error cargando modelo")
+        # Intentar eliminar archivo corrupto para próximo intento
+        if os.path.exists(model_path):
+            try:
+                os.remove(model_path)
+                print("🧹 Archivo corrupto eliminado")
+            except:
+                pass
 
 # Routes
 @app.get("/")
