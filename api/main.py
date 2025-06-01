@@ -3,6 +3,7 @@
 import os
 import joblib
 import pandas as pd
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException
 from sklearn.metrics.pairwise import sigmoid_kernel
 from pathlib import Path # Para construir rutas de forma más robusta
