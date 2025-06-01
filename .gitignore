@@ -41,7 +41,7 @@ Thumbs.db
 *.joblib
 
 # === MODEL OUTPUTS (opcional) ===
-model_assets/
+# model_assets/
 
 # === FASTAPI STATIC FILES (si usas) ===
 static/
