@@ -14,6 +14,27 @@ app = FastAPI(
     version="0.1.0"
 )
 
+# --- Configuración de CORS ---
+
+origins = [
+    "http://localhost", # Si tu frontend corre en localhost sin puerto específico (raro)
+    "http://localhost:3000", # Ejemplo para React, Vue, Angular en desarrollo
+    "http://localhost:5173", # Ejemplo para Vite en desarrollo
+    "http://127.0.0.1:5500", # Ejemplo si abres un HTML con Live Server de VS Code
+    "https://simple-anime-recommender.netlify.app", # ¡AÑADE LA URL DE TU FRONTEND EN PRODUCCIÓN!
+]
+
+# Si vas a desplegar tu frontend en Render también, Render te dará una URL para él.
+# Ejemplo: "https://mi-frontend-anime.onrender.com"
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins, # O usa ["*"] para permitir todos durante el desarrollo inicial
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], # Métodos HTTP permitidos
+    allow_headers=["*"], # Cabeceras HTTP permitidas
+)
+
 # --- Cargar Modelos y Datos al Inicio ---
 # Determinar la ruta base de la aplicación (donde se encuentra main.py)
 BASE_DIR = Path(__file__).resolve().parent
