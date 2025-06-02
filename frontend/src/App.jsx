@@ -1,34 +1,73 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
+import React from 'react'
+import { Routes, Route } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import Layout from './components/layout/Layout'
+import Home from './pages/Home'
+import Recommendations from './pages/Recommendations'
 import './App.css'
 
+/**
+ * Componente principal de la aplicación
+ * Maneja el enrutamiento y la estructura general
+ */
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <div className="App min-h-screen">
+      {/* Efecto de partículas de fondo */}
+      <div className="particles">
+        {Array.from({ length: 20 }).map((_, i) => (
+          <motion.div
+            key={i}
+            className="particle"
+            style={{
+              left: `${Math.random() * 100}%`,
+              animationDelay: `${Math.random() * 6}s`,
+              animationDuration: `${6 + Math.random() * 4}s`,
+            }}
+            animate={{
+              y: [-100, window.innerHeight + 100],
+              x: [0, Math.random() * 200 - 100],
+              opacity: [0, 1, 0],
+            }}
+            transition={{
+              duration: 8 + Math.random() * 4,
+              repeat: Infinity,
+              ease: "linear",
+              delay: Math.random() * 8,
+            }}
+          />
+        ))}
       </div>
-      <h1 class="text-3xl font-bold underline">Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+
+      <Layout>
+        <Routes>
+          <Route 
+            path="/" 
+            element={
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+              >
+                <Home />
+              </motion.div>
+            } 
+          />
+          <Route 
+            path="/recommendations/:animeName" 
+            element={
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5 }}
+              >
+                <Recommendations />
+              </motion.div>
+            } 
+          />
+        </Routes>
+      </Layout>
+    </div>
   )
 }
 
