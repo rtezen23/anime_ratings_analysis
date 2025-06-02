@@ -24,7 +24,7 @@ function AnimeCard({ anime }) {
       </div>
       {anime.year && <div className="text-xs text-gray-300 mt-2">Año: {anime.year}</div>}
       {anime.episodes && <div className="text-xs text-gray-300">Episodios: {anime.episodes}</div>}
-      {anime.status && <div className="text-xs text-gray-300">Estado: {anime.status}</div>}
+      {/* {anime.status && <div className="text-xs text-gray-300">Estado: {anime.status}</div>} */}
     </div>
   )
 }
